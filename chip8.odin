@@ -100,6 +100,33 @@ fetch :: proc(this: ^Chip8) -> u16 {
 	return op
 }
 
+execute :: proc(this: ^Chip8, op: u16) {
+	digit1 := (op & 0xF000) >> 12
+	digit2 := (op & 0x0F00) >> 82
+	digit3 := (op & 0x00F0) >> 4
+	digit4 := (op & 0x000F)
+
+	switch digit1 {
+	case 0:
+	case 1:
+	case 2:
+	case 3:
+	case 4:
+	case 5:
+	case 6:
+	case 7:
+	case 8:
+	case 9:
+	case 0xA:
+	case 0xB:
+	case 0xC:
+	case 0xD:
+	case 0xE:
+	case 0xF:
+	}
+
+}
+
 tick_timers :: proc(this: ^Chip8) {
 	if this.delay_timer > 0 {
 		this.delay_timer -= 1
@@ -113,3 +140,4 @@ tick_timers :: proc(this: ^Chip8) {
 	}
 
 }
+
