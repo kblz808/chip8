@@ -1,5 +1,7 @@
 package main
 
+import "core:math/rand"
+
 // odinfmt: disable
 FONTSET := [80]u8 {
 	0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
@@ -35,6 +37,8 @@ Chip8 :: struct {
 	sound_timer:     u8,
 	fetch:           proc(_: ^Chip8) -> u16,
 	tick:            proc(_: ^Chip8),
+	push:            proc(this: ^Chip8, value: u16),
+	pop:             proc(this: ^Chip8) -> u16,
 }
 
 NewChip8 :: proc() -> Chip8 {
@@ -55,6 +59,8 @@ NewChip8 :: proc() -> Chip8 {
 
 	chip8.fetch = fetch
 	chip8.tick = tick
+	chip8.push = push
+	chip8.pop = pop
 
 	return chip8
 }
@@ -102,27 +108,243 @@ fetch :: proc(this: ^Chip8) -> u16 {
 
 execute :: proc(this: ^Chip8, op: u16) {
 	digit1 := (op & 0xF000) >> 12
-	digit2 := (op & 0x0F00) >> 82
+	digit2 := (op & 0x0F00) >> 8
 	digit3 := (op & 0x00F0) >> 4
 	digit4 := (op & 0x000F)
 
 	switch digit1 {
-	case 0:
-	case 1:
-	case 2:
-	case 3:
-	case 4:
-	case 5:
-	case 6:
-	case 7:
-	case 8:
-	case 9:
+	case 0x0:
+		switch op & 0x00FF {
+		case 0x00:
+			// 0000:
+			break
+		case 0xE0:
+			// 00E0:
+			this.screen = [64 * 32]bool{}
+		case 0xEE:
+			// 00EE:
+			return_address := this.pop(this)
+			this.program_counter = return_address
+		}
+	case 0x1:
+		// 1NNN:
+		nnn := op & 0xFFF
+		this.program_counter = nnn
+	case 0x2:
+		// 2NNN:
+		nnn := op & 0xFFF
+		this.push(this, this.program_counter)
+		this.program_counter = nnn
+	case 0x3:
+		// 3XNN:
+		x := digit2
+		nn := u8(op & 0xFF)
+		if this.v_reg[x] == nn {
+			this.program_counter += 2
+		}
+	case 0x4:
+		// 4XNN:
+		x := digit2
+		nn := u8(op & 0xFF)
+		if this.v_reg[x] != nn {
+			this.program_counter += 2
+		}
+	case 0x5:
+		// 5XY0:
+		x := digit2
+		y := digit3
+		if this.v_reg[x] == this.v_reg[y] {
+			this.program_counter += 2
+		}
+
+	case 0x6:
+		// 6XNN:
+		x := digit2
+		nn := u8(op & 0xFF)
+		this.v_reg[x] = nn
+	case 0x7:
+		// 7XNN
+		x := digit2
+		nn := u8(op & 0xFF)
+		this.v_reg[x] += nn
+	case 0x8:
+		switch digit4 {
+		case 0x0:
+			// 8XY0:
+			x := digit2
+			y := digit3
+			this.v_reg[x] = this.v_reg[y]
+		case 0x1:
+			// 8XY1: OR
+			x := digit2
+			y := digit3
+			this.v_reg[x] |= this.v_reg[y]
+		case 0x2:
+			// 8XY2: AND
+			x := digit2
+			y := digit3
+			this.v_reg[x] &= this.v_reg[y]
+		case 0x3:
+			// 8XY3: XOR
+			x := digit2
+			y := digit3
+			this.v_reg[x] ~= this.v_reg[y]
+		case 0x4:
+			// 8XY4: ADD
+			x := digit2
+			y := digit3
+			sum := u16(this.v_reg[x]) + u16(this.v_reg[y])
+			this.v_reg[x] = u8(sum)
+			this.v_reg[0xF] = u8(sum > 255)
+		case 0x5:
+			// 8XY5:
+			x := digit2
+			y := digit3
+			this.v_reg[0xF] = u8(this.v_reg[x] >= this.v_reg[y])
+			this.v_reg[x] -= this.v_reg[y]
+		case 0x6:
+			// 8XY6:
+			x := digit2
+			lsb := this.v_reg[x] & 0x1
+			this.v_reg[x] >>= 1
+			this.v_reg[0xF] = lsb
+		case 0x7:
+			// 8XY7:
+			x := digit2
+			y := digit3
+			this.v_reg[0xF] = u8(this.v_reg[y] >= this.v_reg[x])
+			this.v_reg[x] = this.v_reg[y] - this.v_reg[x]
+		case 0xE:
+			// 8XYE:
+			x := digit2
+			msb := (this.v_reg[x] >> 7) & 0x1
+			this.v_reg[x] <<= 1
+			this.v_reg[0xF] = msb
+		}
+	case 0x9:
+		// 9XY0:
+		x := digit2
+		y := digit3
+		if this.v_reg[x] != this.v_reg[y] {
+			this.program_counter += 2
+		}
 	case 0xA:
+		// ANNN:
+		nnn := op & 0xFFF
+		this.i_reg = nnn
 	case 0xB:
+		// BNNN:
+		nnn := op & 0xFFF
+		this.program_counter = u16(this.v_reg[0]) + nnn
 	case 0xC:
+		// CXNN:
+		x := digit2
+		nn := u8(op & 0xFF)
+		rng := u8(rand.uint32())
+		this.v_reg[x] = rng & nn
+
 	case 0xD:
+		// DXYN:
+		x_coord := this.v_reg[digit2]
+		y_coord := this.v_reg[digit3]
+
+		rows := digit4
+
+		flipped := false
+
+		for y_line := u16(0); y_line < rows; y_line += 1 {
+			addr := this.i_reg + y_line
+			pixels := this.memory[addr]
+
+			for x_line := u16(0); x_line < 8; x_line += 1 {
+				if (pixels & (0x80 >> x_line)) != 0 {
+					x := (u16(x_coord) + x_line) % 64
+					y := (u16(y_coord) + y_line) % 32
+
+					idx := x + 64 * y
+
+					flipped |= this.screen[idx]
+					this.screen[idx] ~= true
+				}
+			}
+
+		}
+
+		if flipped {
+			this.v_reg[0xF] = 1
+		} else {
+			this.v_reg[0xF] = 0
+		}
 	case 0xE:
+		switch op & 0x00FF {
+		case 0x9E:
+			// EX9E:
+			x := digit2
+			if this.keys[this.v_reg[x]] {
+				this.program_counter += 2
+			}
+		case 0xA1:
+			// EXA1:
+			x := digit2
+			if !this.keys[this.v_reg[x]] {
+				this.program_counter += 2
+			}
+		}
 	case 0xF:
+		switch op & 0x00FF {
+		case 0x07:
+			// FX07:
+			x := digit2
+			this.v_reg[x] = this.delay_timer
+		case 0x0A:
+			// FX0A:
+			x := digit2
+			pressed := false
+			for i := u8(0); i < len(this.keys); i += 1 {
+				if this.keys[i] {
+					this.v_reg[x] = i
+					pressed = true
+					break
+				}
+			}
+			if !pressed {
+				this.program_counter -= 2
+			}
+		case 0x15:
+			// FX15:
+			x := digit2
+			this.delay_timer = this.v_reg[x]
+		case 0x18:
+			// FX18:
+			x := digit2
+			this.sound_timer = this.v_reg[x]
+		case 0x1E:
+			// FX1E:
+			x := digit2
+			this.i_reg += u16(this.v_reg[x])
+		case 0x29:
+			// FX29:
+			x := digit2
+			this.i_reg = u16(this.v_reg[x]) * 5
+		case 0x33:
+			// FX33:
+			x := digit2
+			this.memory[this.i_reg] = this.v_reg[x] / 100
+			this.memory[this.i_reg + 1] = (this.v_reg[x] / 10) % 10
+			this.memory[this.i_reg + 2] = this.v_reg[x] % 10
+		case 0x55:
+			// FX55:
+			x := digit2
+			for i := u16(0); i < x; i += 1 {
+				this.memory[this.i_reg + i] = this.v_reg[i]
+			}
+		case 0x65:
+			// FX65:
+			x := digit2
+			for i := u16(0); i < x; i += 1 {
+				this.v_reg[i] = this.memory[this.i_reg + i]
+			}
+		}
 	}
 
 }
@@ -140,4 +362,3 @@ tick_timers :: proc(this: ^Chip8) {
 	}
 
 }
-
