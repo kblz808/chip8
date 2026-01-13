@@ -23,11 +23,19 @@ FONTSET := [80]u8 {
 }
 // odinfmt: enable
 
+SCREEN_WIDTH :: 64
+SCREEN_HEIGHT :: 32
+
+START_ADDR :: 0x200
+MEMORY_SIZE :: 4096
+SCALE :: 15
+WINDOW_WIDTH :: SCREEN_WIDTH * SCALE
+WINDOW_HEIGHT :: SCREEN_HEIGHT * SCALE
 
 Chip8 :: struct {
 	program_counter: u16,
-	memory:          [4096]u8,
-	screen:          [64 * 32]bool,
+	memory:          [MEMORY_SIZE]u8,
+	screen:          [SCREEN_WIDTH * SCREEN_HEIGHT]bool,
 	v_reg:           [16]u8,
 	i_reg:           u16,
 	stack:           [16]u16,
@@ -35,17 +43,13 @@ Chip8 :: struct {
 	keys:            [16]bool,
 	delay_timer:     u8,
 	sound_timer:     u8,
-	fetch:           proc(_: ^Chip8) -> u16,
-	tick:            proc(_: ^Chip8),
-	push:            proc(this: ^Chip8, value: u16),
-	pop:             proc(this: ^Chip8) -> u16,
 }
 
 NewChip8 :: proc() -> Chip8 {
 	chip8 := Chip8 {
-		program_counter = 0x200,
-		memory          = [4096]u8{},
-		screen          = [64 * 32]bool{},
+		program_counter = START_ADDR,
+		memory          = [MEMORY_SIZE]u8{},
+		screen          = [SCREEN_WIDTH * SCREEN_HEIGHT]bool{},
 		v_reg           = [16]u8{},
 		i_reg           = 0,
 		stack           = [16]u16{},
@@ -57,19 +61,14 @@ NewChip8 :: proc() -> Chip8 {
 
 	copy(chip8.memory[:80], FONTSET[:])
 
-	chip8.fetch = fetch
-	chip8.tick = tick
-	chip8.push = push
-	chip8.pop = pop
-
 	return chip8
 }
 
 
 reset :: proc(this: ^Chip8) {
-	this.program_counter = 0x200
-	this.memory = [4096]u8{}
-	this.screen = [64 * 32]bool{}
+	this.program_counter = START_ADDR
+	this.memory = [MEMORY_SIZE]u8{}
+	this.screen = [SCREEN_WIDTH * SCREEN_HEIGHT]bool{}
 	this.v_reg = [16]u8{}
 	this.i_reg = 0
 	this.stack = [16]u16{}
@@ -92,7 +91,8 @@ pop :: proc(this: ^Chip8) -> u16 {
 }
 
 tick :: proc(this: ^Chip8) {
-	op := this.fetch(this)
+	op := fetch(this)
+	execute(this, op)
 }
 
 fetch :: proc(this: ^Chip8) -> u16 {
@@ -117,13 +117,13 @@ execute :: proc(this: ^Chip8, op: u16) {
 		switch op & 0x00FF {
 		case 0x00:
 			// 0000:
-			break
+			return
 		case 0xE0:
 			// 00E0:
-			this.screen = [64 * 32]bool{}
+			this.screen = [SCREEN_WIDTH * SCREEN_HEIGHT]bool{}
 		case 0xEE:
 			// 00EE:
-			return_address := this.pop(this)
+			return_address := pop(this)
 			this.program_counter = return_address
 		}
 	case 0x1:
@@ -133,7 +133,7 @@ execute :: proc(this: ^Chip8, op: u16) {
 	case 0x2:
 		// 2NNN:
 		nnn := op & 0xFFF
-		this.push(this, this.program_counter)
+		push(this, this.program_counter)
 		this.program_counter = nnn
 	case 0x3:
 		// 3XNN:
@@ -166,7 +166,7 @@ execute :: proc(this: ^Chip8, op: u16) {
 		// 7XNN
 		x := digit2
 		nn := u8(op & 0xFF)
-		this.v_reg[x] += nn
+		this.v_reg[x] = nn
 	case 0x8:
 		switch digit4 {
 		case 0x0:
@@ -253,15 +253,15 @@ execute :: proc(this: ^Chip8, op: u16) {
 		flipped := false
 
 		for y_line := u16(0); y_line < rows; y_line += 1 {
-			addr := this.i_reg + y_line
+			addr := (this.i_reg + y_line) % MEMORY_SIZE
 			pixels := this.memory[addr]
 
 			for x_line := u16(0); x_line < 8; x_line += 1 {
 				if (pixels & (0x80 >> x_line)) != 0 {
-					x := (u16(x_coord) + x_line) % 64
-					y := (u16(y_coord) + y_line) % 32
+					x := (u16(x_coord) + x_line) % SCREEN_WIDTH
+					y := (u16(y_coord) + y_line) % SCREEN_HEIGHT
 
-					idx := x + 64 * y
+					idx := x + SCREEN_WIDTH * y
 
 					flipped |= this.screen[idx]
 					this.screen[idx] ~= true
@@ -335,13 +335,13 @@ execute :: proc(this: ^Chip8, op: u16) {
 		case 0x55:
 			// FX55:
 			x := digit2
-			for i := u16(0); i < x; i += 1 {
+			for i := u16(0); i <= x; i += 1 {
 				this.memory[this.i_reg + i] = this.v_reg[i]
 			}
 		case 0x65:
 			// FX65:
 			x := digit2
-			for i := u16(0); i < x; i += 1 {
+			for i := u16(0); i <= x; i += 1 {
 				this.v_reg[i] = this.memory[this.i_reg + i]
 			}
 		}
@@ -361,4 +361,16 @@ tick_timers :: proc(this: ^Chip8) {
 		this.sound_timer -= 1
 	}
 
+}
+
+get_display :: proc(this: ^Chip8) -> []bool {
+	return this.screen[:]
+}
+
+keypress :: proc(this: ^Chip8, idx: u8, pressed: bool) {
+	this.keys[idx] = pressed
+}
+
+load :: proc(this: ^Chip8, data: []byte) {
+	copy(this.memory[START_ADDR:], data[:])
 }
