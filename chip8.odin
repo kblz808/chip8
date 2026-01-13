@@ -166,7 +166,7 @@ execute :: proc(this: ^Chip8, op: u16) {
 		// 7XNN
 		x := digit2
 		nn := u8(op & 0xFF)
-		this.v_reg[x] = nn
+		this.v_reg[x] += nn
 	case 0x8:
 		switch digit4 {
 		case 0x0:
