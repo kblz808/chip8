@@ -2,28 +2,30 @@ package main
 
 import "core:fmt"
 import "core:os"
-import rl "vendor:raylib"
+import sdl "vendor:sdl3"
 
 TICKS_PER_FRAME :: 10
 
-KEY_MAP := [16]rl.KeyboardKey {
-	rl.KeyboardKey.X,
-	rl.KeyboardKey.ONE,
-	rl.KeyboardKey.TWO,
-	rl.KeyboardKey.THREE,
-	rl.KeyboardKey.Q,
-	rl.KeyboardKey.W,
-	rl.KeyboardKey.E,
-	rl.KeyboardKey.A,
-	rl.KeyboardKey.S,
-	rl.KeyboardKey.D,
-	rl.KeyboardKey.Z,
-	rl.KeyboardKey.C,
-	rl.KeyboardKey.FOUR,
-	rl.KeyboardKey.R,
-	rl.KeyboardKey.F,
-	rl.KeyboardKey.V,
+// odinfmt: disable
+KEY_MAP := [16]sdl.Keycode {
+	sdl.K_X,
+	sdl.K_1,
+	sdl.K_2,
+	sdl.K_3,
+	sdl.K_Q,
+	sdl.K_W,
+	sdl.K_E,
+	sdl.K_A,
+	sdl.K_S,
+	sdl.K_D,
+	sdl.K_Z,
+	sdl.K_C,
+	sdl.K_4,
+	sdl.K_R,
+	sdl.K_F,
+	sdl.K_V,
 }
+// odinfmt: enable
 
 main :: proc() {
 	args := os.args
@@ -44,17 +46,54 @@ main :: proc() {
 	load(&chip8, data)
 	fmt.println("game loaded")
 
-	rl.InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "chip8")
-	defer rl.CloseWindow()
+	if !sdl.Init({.VIDEO}) {
+		fmt.eprintf("sdl init failed: %v\n", sdl.GetError())
+		return
+	}
+	defer sdl.Quit()
 
-	rl.SetTargetFPS(60)
+	window := sdl.CreateWindow("chip8", WINDOW_WIDTH, WINDOW_HEIGHT, {})
+	if window == nil {
+		fmt.eprintf("failed to create window: %v\n", sdl.GetError())
+		return
+	}
+	defer sdl.DestroyWindow(window)
 
+	renderer := sdl.CreateRenderer(window, nil)
+	if renderer == nil {
+		fmt.eprintf("failed to create renderer: %v\n", sdl.GetError())
+		return
+	}
+	defer sdl.DestroyRenderer(renderer)
 
-	for !rl.WindowShouldClose() {
-		for key, i in KEY_MAP {
-			is_down := rl.IsKeyDown(key)
-			if chip8.keys[i] != is_down {
-				keypress(&chip8, u8(i), is_down)
+	sdl.SetRenderDrawColor(renderer, 0, 0, 0, 255)
+
+	event: sdl.Event
+	running := true
+
+	for running {
+		for sdl.PollEvent(&event) {
+			#partial switch event.type {
+			case .QUIT:
+				running = false
+			case .WINDOW_CLOSE_REQUESTED:
+				running = false
+			case .KEY_DOWN:
+				if event.key.key == sdl.K_ESCAPE {
+					running = false
+				}
+
+				for key, i in KEY_MAP {
+					if event.key.key == key {
+						keypress(&chip8, u8(i), true)
+					}
+				}
+			case .KEY_UP:
+				for key, i in KEY_MAP {
+					if event.key.key == key {
+						keypress(&chip8, u8(i), false)
+					}
+				}
 			}
 		}
 
@@ -63,26 +102,25 @@ main :: proc() {
 		}
 
 		tick_timers(&chip8)
-		draw_screen(&chip8)
-	}
-}
 
-draw_screen :: proc(chip8: ^Chip8) {
-	rl.BeginDrawing()
-	rl.DrawFPS(0, 0)
+		sdl.SetRenderDrawColor(renderer, 0, 0, 0, 255)
+		sdl.RenderClear(renderer)
 
-	rl.ClearBackground(rl.Color{0, 0, 0, 0})
+		sdl.SetRenderDrawColor(renderer, 255, 255, 255, 255)
 
-	screen_buffer := get_display(chip8)
+		screen_buffer := get_display(&chip8)
 
-	for pixel, i in screen_buffer {
-		if pixel {
-			x := (i % SCREEN_WIDTH)
-			y := (i / SCREEN_WIDTH)
-			rect := rl.Rectangle{f32(x * SCALE), f32(y * SCALE), f32(SCALE), f32(SCALE)}
-			rl.DrawRectangleRec(rect, rl.Color{255, 255, 255, 255})
+		for pixel, i in screen_buffer {
+			if pixel {
+				x := (i % SCREEN_WIDTH)
+				y := (i / SCREEN_WIDTH)
+				rect := sdl.FRect{f32(x * SCALE), f32(y * SCALE), f32(SCALE), f32(SCALE)}
+				sdl.RenderFillRect(renderer, &rect)
+			}
 		}
-	}
 
-	rl.EndDrawing()
+		sdl.RenderPresent(renderer)
+
+		sdl.DelayNS(16_666_667)
+	}
 }
