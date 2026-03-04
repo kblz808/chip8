@@ -1,13 +1,15 @@
 package main
 
-import "core:fmt"
-import "core:os"
-import sdl "vendor:sdl3"
+import (
+	"os"
+	"fmt"
+)
+// import sdl "vendor:sdl3"
 
-TICKS_PER_FRAME :: 10
+var TICKS_PER_FRAME = 10
 
 // odinfmt: disable
-KEY_MAP := [16]sdl.Keycode {
+var KEY_MAP = [16]sdl.Keycode {
 	sdl.K_X,
 	sdl.K_1,
 	sdl.K_2,
@@ -27,8 +29,8 @@ KEY_MAP := [16]sdl.Keycode {
 }
 // odinfmt: enable
 
-main :: proc() {
-	args := os.args
+func main() {
+	args := os.Args
 	if len(args) != 2 {
 		fmt.println("usage: chip8 path/to/game")
 		return
