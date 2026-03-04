@@ -259,8 +259,8 @@ func (c *Chip8) execute(op uint16) {
 
 					idx := x + SCREEN_WIDTH*y
 
-					flipped = (flipped != c.screen[idx])
-					c.screen[idx] = (c.screen[idx] || true)
+					flipped = flipped || c.screen[idx]
+					c.screen[idx] = !c.screen[idx]
 				}
 			}
 
@@ -363,11 +363,11 @@ func (c *Chip8) get_display() []bool {
 	return c.screen[:]
 }
 
-func (c *Chip8) keypress(idx uint8, pressed bool) {
+func (c *Chip8) KeyPress(idx uint8, pressed bool) {
 	c.keys[idx] = pressed
 }
 
-func (c *Chip8) load(data []byte) {
+func (c *Chip8) Load(data []byte) {
 	copy(c.memory[START_ADDR:], data[:])
 }
 
