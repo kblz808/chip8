@@ -40,11 +40,32 @@ var KEY_MAP = [16]ebiten.Key{
 }
 
 func (e *Emulator) Update() error {
+	if ebiten.IsKeyPressed(ebiten.KeyEscape) {
+		// stop game
+	}
+
+	for i, key := range KEY_MAP {
+		if inpututil.IsKeyJustPressed(key) {
+			e.chip8.KeyPress(uint8(i), true)
+		}
+
+		if inpututil.IsKeyJustReleased(key) {
+			e.chip8.KeyPress(uint8(i), false)
+		}
+	}
+
+	// for i := 0; i <= TICKS_PER_FRAME; i++ {
+	// 	e.chip8.tick()
+	// }
+
+	op := e.chip8.fetch()
+
 	if _, err := e.debugui.Update(func(ctx *debugui.Context) error {
 		ctx.Window("debug", image.Rect(WINDOW_WIDTH+20, 10, 760, 500), func(layout debugui.ContainerLayout) {
 			ctx.Header("info", true, func() {
 				ctx.Text(fmt.Sprintf("FPS: %0.2f", ebiten.ActualFPS()))
 				ctx.Text(fmt.Sprintf("PC: %x", e.chip8.program_counter))
+				ctx.Text(fmt.Sprintf("OPCODE: %x", op))
 			})
 
 			ctx.Header("v-reg", true, func() {
@@ -74,23 +95,7 @@ func (e *Emulator) Update() error {
 		return err
 	}
 
-	if ebiten.IsKeyPressed(ebiten.KeyEscape) {
-		// stop game
-	}
-
-	for i, key := range KEY_MAP {
-		if inpututil.IsKeyJustPressed(key) {
-			e.chip8.KeyPress(uint8(i), true)
-		}
-
-		if inpututil.IsKeyJustReleased(key) {
-			e.chip8.KeyPress(uint8(i), false)
-		}
-	}
-
-	for i := 0; i <= TICKS_PER_FRAME; i++ {
-		e.chip8.tick()
-	}
+	e.chip8.execute(op)
 
 	e.chip8.tick_timers()
 
@@ -137,6 +142,9 @@ func main() {
 
 	ebiten.SetWindowSize(WINDOW_WIDTH*4, WINDOW_HEIGHT*4)
 	ebiten.SetWindowTitle("chip8 visualizer")
+
+	// ebiten.SetVsyncEnabled(false)
+	// ebiten.SetTPS(1)
 
 	emulator := Emulator{debugui.DebugUI{}, &chip8}
 
