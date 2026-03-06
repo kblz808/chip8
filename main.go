@@ -1,10 +1,13 @@
 package main
 
 import (
+	"fmt"
+	"image"
 	"image/color"
 	"log"
 	"os"
 
+	"github.com/ebitengine/debugui"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
@@ -13,7 +16,8 @@ import (
 const TICKS_PER_FRAME = 10
 
 type Emulator struct {
-	chip8 *Chip8
+	debugui debugui.DebugUI
+	chip8   *Chip8
 }
 
 var KEY_MAP = [16]ebiten.Key{
@@ -36,6 +40,40 @@ var KEY_MAP = [16]ebiten.Key{
 }
 
 func (e *Emulator) Update() error {
+	if _, err := e.debugui.Update(func(ctx *debugui.Context) error {
+		ctx.Window("debug", image.Rect(WINDOW_WIDTH+20, 10, 760, 500), func(layout debugui.ContainerLayout) {
+			ctx.Header("info", true, func() {
+				ctx.Text(fmt.Sprintf("FPS: %0.2f", ebiten.ActualFPS()))
+				ctx.Text(fmt.Sprintf("PC: %x", e.chip8.program_counter))
+			})
+
+			ctx.Header("v-reg", true, func() {
+				ctx.SetGridLayout([]int{-1, -1, -1, -1}, nil)
+				for i, v := range e.chip8.v_reg {
+					ctx.Text(fmt.Sprintf("%x - %x", i, v))
+				}
+			})
+
+			ctx.Header("stack", true, func() {
+				ctx.SetGridLayout([]int{-1, -1, -1, -1}, nil)
+				for i, v := range e.chip8.stack {
+					ctx.Text(fmt.Sprintf("%x - %x", i, v))
+				}
+			})
+
+		})
+
+		// ctx.Window("v-reg", image.Rect(WINDOW_WIDTH+100, 10, 260, 400), func(layout debugui.ContainerLayout) {
+		// 	for i, v := range e.chip8.v_reg {
+		// 		ctx.Text(fmt.Sprintf("reg: %d - %x", i, v))
+		// 	}
+		// })
+
+		return nil
+	}); err != nil {
+		return err
+	}
+
 	if ebiten.IsKeyPressed(ebiten.KeyEscape) {
 		// stop game
 	}
@@ -60,7 +98,7 @@ func (e *Emulator) Update() error {
 }
 
 func (e *Emulator) Layout(outsideWidth, outsideHeight int) (int, int) {
-	return WINDOW_WIDTH, WINDOW_HEIGHT
+	return WINDOW_WIDTH * 4, WINDOW_HEIGHT * 4
 }
 
 func (e *Emulator) Draw(screen *ebiten.Image) {
@@ -75,6 +113,8 @@ func (e *Emulator) Draw(screen *ebiten.Image) {
 			vector.FillRect(screen, float32(x*SCALE), float32(y*SCALE), float32(SCALE), float32(SCALE), color.White, false)
 		}
 	}
+
+	e.debugui.Draw(screen)
 }
 
 func main() {
@@ -95,10 +135,10 @@ func main() {
 	chip8.Load(data)
 	log.Println("game loaded")
 
-	ebiten.SetWindowSize(WINDOW_WIDTH, WINDOW_HEIGHT)
+	ebiten.SetWindowSize(WINDOW_WIDTH*4, WINDOW_HEIGHT*4)
 	ebiten.SetWindowTitle("chip8 visualizer")
 
-	emulator := Emulator{&chip8}
+	emulator := Emulator{debugui.DebugUI{}, &chip8}
 
 	if err := ebiten.RunGame(&emulator); err != nil {
 		log.Fatal(err)
